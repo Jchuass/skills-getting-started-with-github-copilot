@@ -7,6 +7,107 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def reset_activities():
+    # Arrange: capture original participants to restore after each test
+    original = {k: v['participants'].copy() for k, v in activities.items()}
+    yield
+    for k in activities:
+        activities[k]['participants'] = original[k].copy()
+
+def test_get_activities():
+    # Arrange (none)
+
+    # Act
+    r = client.get('/activities')
+
+    # Assert
+    assert r.status_code == 200
+    data = r.json()
+    assert 'Chess Club' in data
+
+def test_signup_success():
+    # Arrange
+    email = 'test1@mergington.edu'
+    activity = 'Tennis Club'
+    assert email not in activities[activity]['participants']
+
+    # Act
+    r = client.post(f'/activities/{activity}/signup', params={'email': email})
+
+    # Assert
+    assert r.status_code == 200
+    assert email in activities[activity]['participants']
+
+def test_signup_same_activity_duplicate_blocked():
+    # Arrange
+    email = 'michael@mergington.edu'  # already in Chess Club
+    activity = 'Chess Club'
+    assert email in activities[activity]['participants']
+
+    # Act
+    r = client.post(f'/activities/{activity}/signup', params={'email': email})
+
+    # Assert
+    assert r.status_code == 400
+
+def test_signup_cross_activity_blocked():
+    # Arrange
+    email = 'emma@mergington.edu'  # in Programming Class
+    target_activity = 'Chess Club'
+    assert any(email in v['participants'] for v in activities.values())
+
+    # Act
+    r = client.post(f'/activities/{target_activity}/signup', params={'email': email})
+
+    # Assert
+    assert r.status_code == 400
+    assert 'already signed up for' in r.json().get('detail', '')
+
+def test_remove_participant_success():
+    # Arrange
+    email = 'michael@mergington.edu'
+    activity = 'Chess Club'
+    assert email in activities[activity]['participants']
+
+    # Act
+    r = client.delete(f'/activities/{activity}/participants', params={'email': email})
+
+    # Assert
+    assert r.status_code == 200
+    assert email not in activities[activity]['participants']
+
+def test_remove_nonexistent_participant():
+    # Arrange
+    email = 'noone@mergington.edu'
+    activity = 'Chess Club'
+    assert email not in activities[activity]['participants']
+
+    # Act
+    r = client.delete(f'/activities/{activity}/participants', params={'email': email})
+
+    # Assert
+    assert r.status_code == 404
+
+def test_signup_invalid_email_format():
+    # Arrange
+    invalid_email = 'not-an-email'
+    activity = 'Tennis Club'
+    assert invalid_email not in activities[activity]['participants']
+
+    # Act
+    r = client.post(f'/activities/{activity}/signup', params={'email': invalid_email})
+
+    # Assert
+    assert r.status_code == 400
+    assert 'Invalid email format' in r.json().get('detail', '')
+import copy
+import pytest
+from fastapi.testclient import TestClient
+from src.app import app, activities
+
+client = TestClient(app)
+
+@pytest.fixture(autouse=True)
+def reset_activities():
     original = {k: v['participants'].copy() for k, v in activities.items()}
     yield
     for k in activities:
